@@ -39,27 +39,43 @@ trap cleanup EXIT
 
 echo "Obtaining source archive..."
 
-if command -v curl >/dev/null 2>&1; then
-    curl -fL --retry 3 -o "$SOURCE_TAR" "$ARCHIVE_URL"
-elif command -v wget >/dev/null 2>&1; then
-    wget -O "$SOURCE_TAR" "$ARCHIVE_URL"
-elif command -v busybox >/dev/null 2>&1 && busybox wget --help >/dev/null 2>&1; then
-    busybox wget -O "$SOURCE_TAR" "$ARCHIVE_URL"
-elif command -v git >/dev/null 2>&1 && command -v tar >/dev/null 2>&1; then
-    echo "No HTTP downloader found. Falling back to git clone + git archive..."
+download_ok=0
 
-    git clone --depth 1 "$REPO_URL" "$UPDATE_SRC"
-    git -C "$UPDATE_SRC" archive \
-        --format=tar.gz \
-        --prefix=moonraker-master/ \
-        -o "$SOURCE_TAR" \
-        HEAD
-else
-    echo "Error: could not obtain source archive: curl, wget, busybox wget, or git+tar are required." >&2
-    exit 1
+if command -v curl >/dev/null 2>&1; then
+    echo "Trying curl..."
+    if curl -fL --retry 3 -o "$SOURCE_TAR" "$ARCHIVE_URL"; then
+        download_ok=1
+    fi
 fi
 
-if [ ! -s "$SOURCE_TAR" ]; then
+if [ "$download_ok" -eq 0 ] && command -v wget >/dev/null 2>&1; then
+    echo "Trying wget..."
+    if wget -O "$SOURCE_TAR" "$ARCHIVE_URL"; then
+        download_ok=1
+    fi
+fi
+
+if [ "$download_ok" -eq 0 ] && command -v busybox >/dev/null 2>&1 && busybox wget --help >/dev/null 2>&1; then
+    echo "Trying busybox wget..."
+    if busybox wget -O "$SOURCE_TAR" "$ARCHIVE_URL"; then
+        download_ok=1
+    fi
+fi
+
+if [ "$download_ok" -eq 0 ] && command -v git >/dev/null 2>&1 && command -v tar >/dev/null 2>&1; then
+    echo "HTTP download unavailable or failed. Falling back to git clone + git archive..."
+
+    if git clone --depth 1 "$REPO_URL" "$UPDATE_SRC" \
+        && git -C "$UPDATE_SRC" archive \
+            --format=tar.gz \
+            --prefix=moonraker-master/ \
+            -o "$SOURCE_TAR" \
+            HEAD; then
+        download_ok=1
+    fi
+fi
+
+if [ "$download_ok" -eq 0 ] || [ ! -s "$SOURCE_TAR" ]; then
     echo "Error: could not obtain source archive from $ARCHIVE_URL or $REPO_URL." >&2
     exit 1
 fi
